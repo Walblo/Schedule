@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    background-color: #191B1C;
+    color: #EDEFF0;
+    font-family: var(--font-inter), system-ui, sans-serif;
+  }
+
+  ::-webkit-scrollbar       { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #1E2021; }
+  ::-webkit-scrollbar-thumb { background: #595F61; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3BC45F; }
+}
+
+@layer components {
+  /* ── Full-page backgrounds ── */
+  .auth-bg {
+    min-height: 100vh;
+    background:
+      linear-gradient(
+        150deg,
+        rgba(25,27,28,0.93) 0%,
+        rgba(23,43,30,0.88) 45%,
+        rgba(35,20,10,0.92) 100%
+      ),
+      url('https://images.unsplash.com/photo-1609501676752-3b76d5e26b95?w=1920&q=75&auto=format&fit=crop')
+      center / cover no-repeat fixed;
+  }
+
+  .calendar-bg {
+    min-height: 100vh;
+    background:
+      linear-gradient(
+        160deg,
+        rgba(22,25,23,0.93) 0%,
+        rgba(20,33,22,0.89) 40%,
+        rgba(30,18,8,0.91)  100%
+      ),
+      url('https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=1920&q=75&auto=format&fit=crop')
+      center / cover no-repeat fixed;
+  }
+
+  /* ── Form controls ── */
+  .input-field {
+    @apply w-full bg-[#141516] border border-[#595F61] rounded-lg px-4 py-3
+           text-[#EDEFF0] placeholder-[#595F61] outline-none
+           transition-all duration-200;
+  }
+  .input-field:focus {
+    @apply border-[#3BC45F];
+    box-shadow: 0 0 0 3px rgba(59,196,95,0.15);
+  }
+
+  .btn-primary {
+    @apply w-full bg-[#2D9D4B] hover:bg-[#3BC45F] active:bg-[#1F7436]
+           text-white font-semibold rounded-lg py-3
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply border border-[#595F61] hover:border-[#9BA3A8]
+           text-[#9BA3A8] hover:text-[#EDEFF0]
+           rounded-lg px-4 py-2 text-sm
+           transition-all duration-200;
+  }
+
+  /* ── Calendar cell border helpers ── */
+  .cal-cell-border {
+    border-right: 1px solid #2A2C2D;
+    border-bottom: 1px solid #2A2C2D;
+  }
+  .cal-cell-border:nth-child(7n) { border-right: none; }
+}
