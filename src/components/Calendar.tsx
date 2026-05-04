@@ -12,6 +12,7 @@ import DayModal, { type AvailEntry } from './DayModal'
 interface CalendarProps {
   userId:   string
   username: string
+  groupId:  string
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -34,7 +35,7 @@ function ChevronRight() {
   )
 }
 
-export default function Calendar({ userId, username }: CalendarProps) {
+export default function Calendar({ userId, username, groupId }: CalendarProps) {
   const [currentDate,   setCurrentDate]   = useState(new Date())
   const [availability,  setAvailability]  = useState<AvailEntry[]>([])
   const [fetching,      setFetching]      = useState(true)
@@ -52,11 +53,12 @@ export default function Calendar({ userId, username }: CalendarProps) {
     const { data, error } = await supabase
       .from('availability')
       .select('user_id, username, date, games, time_start, time_end')
+      .eq('group_id', groupId)
       .gte('date', start)
       .lte('date', end)
     if (!error && data) setAvailability(data as AvailEntry[])
     setFetching(false)
-  }, [currentDate])
+  }, [currentDate, groupId])
 
   useEffect(() => {
     setFetching(true)
@@ -247,6 +249,7 @@ export default function Calendar({ userId, username }: CalendarProps) {
           entries={entriesForDate(selectedDate)}
           userId={userId}
           username={username}
+          groupId={groupId}
           onClose={() => setSelectedDate(null)}
           onDataChange={fetchAvailability}
         />

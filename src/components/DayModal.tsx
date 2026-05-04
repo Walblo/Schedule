@@ -18,6 +18,7 @@ interface DayModalProps {
   entries:      AvailEntry[]
   userId:       string
   username:     string
+  groupId:      string
   onClose:      () => void
   onDataChange: () => Promise<void>
 }
@@ -33,7 +34,7 @@ function fmt12(t: string | null): string {
 }
 
 export default function DayModal({
-  date, entries, userId, username, onClose, onDataChange,
+  date, entries, userId, username, groupId, onClose, onDataChange,
 }: DayModalProps) {
   const dateStr = format(date, 'yyyy-MM-dd')
   const myEntry = entries.find(e => e.user_id === userId)
@@ -104,6 +105,7 @@ export default function DayModal({
       await supabase.from('availability').insert({
         user_id: userId, username, date: dateStr,
         games: '', time_start: null, time_end: null,
+        group_id: groupId,
       })
     }
     await onDataChange()
