@@ -77,6 +77,17 @@
   }
   .cal-cell-border:nth-child(7n) { border-right: none; }
 
+  /* ── Time input: tint the clock icon to match the dark theme ── */
+  .time-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.55) sepia(1) saturate(1.8) hue-rotate(95deg);
+    opacity: 0.65;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .time-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
   /* ── Day modal animation ── */
   .modal-card {
     animation: modal-in 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;

@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS availability (
   username   TEXT NOT NULL,
   date       DATE NOT NULL,
   games      TEXT DEFAULT '',
+  time_start TIME,
+  time_end   TIME,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (user_id, date)
 );
@@ -37,6 +39,8 @@ CREATE POLICY "availability_delete_own"  ON availability FOR DELETE  USING (auth
 
 -- ── If you already ran the schema above, run just this migration instead ──
 -- ALTER TABLE availability ADD COLUMN IF NOT EXISTS games TEXT DEFAULT '';
+-- ALTER TABLE availability ADD COLUMN IF NOT EXISTS time_start TIME;
+-- ALTER TABLE availability ADD COLUMN IF NOT EXISTS time_end   TIME;
 -- CREATE POLICY "availability_update_own" ON availability FOR UPDATE USING (auth.uid() = user_id);
 
 -- Enable real-time for availability

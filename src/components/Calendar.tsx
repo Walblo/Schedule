@@ -51,7 +51,7 @@ export default function Calendar({ userId, username }: CalendarProps) {
     const end   = format(endOfMonth(currentDate),   'yyyy-MM-dd')
     const { data, error } = await supabase
       .from('availability')
-      .select('user_id, username, date, games')
+      .select('user_id, username, date, games, time_start, time_end')
       .gte('date', start)
       .lte('date', end)
     if (!error && data) setAvailability(data as AvailEntry[])

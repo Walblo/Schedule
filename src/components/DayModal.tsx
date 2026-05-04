@@ -1,23 +1,35 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 
 export interface AvailEntry {
-  user_id:  string
-  username: string
-  date:     string
-  games:    string
+  user_id:    string
+  username:   string
+  date:       string
+  games:      string
+  time_start: string | null
+  time_end:   string | null
 }
 
 interface DayModalProps {
   date:         Date
-  entries:      AvailEntry[]   // all entries for this specific date
+  entries:      AvailEntry[]
   userId:       string
   username:     string
   onClose:      () => void
   onDataChange: () => Promise<void>
+}
+
+/** Convert a Postgres TIME string ("14:30:00") to "2:30 PM" */
+function fmt12(t: string | null): string {
+  if (!t) return ''
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr, 10)
+  const period = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 || 12
+  return `${h12}:${mStr} ${period}`
 }
 
 export default function DayModal({
@@ -27,28 +39,32 @@ export default function DayModal({
   const myEntry = entries.find(e => e.user_id === userId)
   const isAvail = !!myEntry
 
-  const [games,  setGames]  = useState(myEntry?.games ?? '')
-  const [saving, setSaving] = useState(false)
-  const [dirty,  setDirty]  = useState(false)
-  const [saved,  setSaved]  = useState(false)
+  const [games,     setGames]     = useState(myEntry?.games      ?? '')
+  const [timeStart, setTimeStart] = useState(myEntry?.time_start ?? '')
+  const [timeEnd,   setTimeEnd]   = useState(myEntry?.time_end   ?? '')
+  const [saving,    setSaving]    = useState(false)
+  const [dirty,     setDirty]     = useState(false)
+  const [saved,     setSaved]     = useState(false)
 
-  const overlayRef = useRef<HTMLDivElement>(null)
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const overlayRef  = useRef<HTMLDivElement>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sync games text when myEntry changes (e.g. real-time update from another device)
+  // Sync local state if a real-time update changes myEntry
   useEffect(() => {
-    setGames(myEntry?.games ?? '')
+    setGames(myEntry?.games      ?? '')
+    setTimeStart(myEntry?.time_start ?? '')
+    setTimeEnd(myEntry?.time_end   ?? '')
     setDirty(false)
   }, [myEntry])
 
-  // Escape key closes the modal
+  // Escape closes modal
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Prevent body scroll while open
+  // Lock body scroll
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
@@ -58,43 +74,47 @@ export default function DayModal({
     if (e.target === overlayRef.current) onClose()
   }
 
+  /** Single save for all editable fields — call on any field blur */
+  const save = async (
+    latestGames    = games,
+    latestStart    = timeStart,
+    latestEnd      = timeEnd,
+  ) => {
+    if (!isAvail || !dirty) return
+    setSaving(true)
+    await supabase.from('availability').update({
+      games:      latestGames,
+      time_start: latestStart || null,
+      time_end:   latestEnd   || null,
+    }).eq('user_id', userId).eq('date', dateStr)
+    await onDataChange()
+    setDirty(false)
+    setSaved(true)
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+    savedTimerRef.current = setTimeout(() => setSaved(false), 1800)
+    setSaving(false)
+  }
+
   const toggleAvail = async () => {
     setSaving(true)
     if (isAvail) {
       await supabase.from('availability').delete()
         .eq('user_id', userId).eq('date', dateStr)
     } else {
-      await supabase.from('availability')
-        .insert({ user_id: userId, username, date: dateStr, games: '' })
+      await supabase.from('availability').insert({
+        user_id: userId, username, date: dateStr,
+        games: '', time_start: null, time_end: null,
+      })
     }
     await onDataChange()
     setSaving(false)
   }
 
-  const saveGames = useCallback(async () => {
-    if (!isAvail || !dirty) return
-    setSaving(true)
-    await supabase.from('availability')
-      .update({ games })
-      .eq('user_id', userId)
-      .eq('date', dateStr)
-    await onDataChange()
-    setDirty(false)
-    setSaved(true)
-    if (savedTimer.current) clearTimeout(savedTimer.current)
-    savedTimer.current = setTimeout(() => setSaved(false), 1800)
-    setSaving(false)
-  }, [isAvail, dirty, games, userId, dateStr, onDataChange])
-
-  // Sort: current user first, then alphabetical
   const sorted = [...entries].sort((a, b) => {
     if (a.user_id === userId) return -1
     if (b.user_id === userId) return 1
     return a.username.localeCompare(b.username)
   })
-
-  const dayOfWeek = format(date, 'EEEE')
-  const fullDate  = format(date, 'MMMM d, yyyy')
 
   return (
     <div
@@ -111,9 +131,9 @@ export default function DayModal({
                         border-b border-[#2A2C2D] bg-[#191B1C]">
           <div>
             <h3 className="font-cinzel text-2xl font-bold text-[#EDEFF0] leading-tight">
-              {dayOfWeek}
+              {format(date, 'EEEE')}
             </h3>
-            <p className="text-[#9BA3A8] text-sm mt-0.5">{fullDate}</p>
+            <p className="text-[#9BA3A8] text-sm mt-0.5">{format(date, 'MMMM d, yyyy')}</p>
           </div>
           <button
             onClick={onClose}
@@ -130,9 +150,9 @@ export default function DayModal({
         </div>
 
         {/* ── Body ── */}
-        <div className="p-6 space-y-6 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+        <div className="p-6 space-y-6 overflow-y-auto" style={{ maxHeight: '68vh' }}>
 
-          {/* Your availability */}
+          {/* Your availability toggle */}
           <section>
             <p className="text-[#595F61] text-[10px] uppercase tracking-widest mb-3 font-medium">
               Your Availability
@@ -148,37 +168,64 @@ export default function DayModal({
                   : 'bg-transparent border-[#595F61] text-[#9BA3A8] hover:border-[#3BC45F]/60 hover:text-[#3BC45F]',
               ].join(' ')}
             >
-              {saving
-                ? '…'
-                : isAvail
-                  ? "✓  I'm free this day"
-                  : '+  Mark myself as free'}
+              {saving ? '…' : isAvail ? "✓  I'm free this day" : '+  Mark myself as free'}
             </button>
           </section>
 
-          {/* Games input — only when available */}
+          {/* ── Detail fields (only when available) ── */}
           {isAvail && (
-            <section>
-              <div className="flex items-center justify-between mb-2">
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
                 <p className="text-[#595F61] text-[10px] uppercase tracking-widest font-medium">
-                  Games You Want to Play
+                  Your Details
                 </p>
                 {saved && (
                   <span className="text-[#3BC45F] text-[10px] font-medium">Saved ✓</span>
                 )}
               </div>
-              <input
-                type="text"
-                value={games}
-                onChange={e => { setGames(e.target.value); setDirty(true); setSaved(false) }}
-                onBlur={saveGames}
-                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                placeholder="e.g. Catan, Wingspan, Ticket to Ride"
-                className="input-field text-sm"
-              />
-              <p className="text-[#595F61] text-[10px] mt-1.5">
-                Press Enter or click away to save
-              </p>
+
+              {/* Games */}
+              <div>
+                <label className="block text-[#595F61] text-[10px] uppercase tracking-wider mb-1.5">
+                  Games to play
+                </label>
+                <input
+                  type="text"
+                  value={games}
+                  onChange={e => { setGames(e.target.value); setDirty(true); setSaved(false) }}
+                  onBlur={e => save(e.target.value, timeStart, timeEnd)}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                  placeholder="e.g. Catan, Wingspan, Ticket to Ride"
+                  className="input-field text-sm"
+                />
+              </div>
+
+              {/* Time range */}
+              <div>
+                <label className="block text-[#595F61] text-[10px] uppercase tracking-wider mb-1.5">
+                  Available time range
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="time"
+                    value={timeStart}
+                    onChange={e => { setTimeStart(e.target.value); setDirty(true); setSaved(false) }}
+                    onBlur={e => save(games, e.target.value, timeEnd)}
+                    className="input-field text-sm flex-1 time-input"
+                  />
+                  <span className="text-[#595F61] text-sm flex-shrink-0">to</span>
+                  <input
+                    type="time"
+                    value={timeEnd}
+                    onChange={e => { setTimeEnd(e.target.value); setDirty(true); setSaved(false) }}
+                    onBlur={e => save(games, timeStart, e.target.value)}
+                    className="input-field text-sm flex-1 time-input"
+                  />
+                </div>
+                <p className="text-[#595F61] text-[10px] mt-1.5">
+                  Leave blank for any time · saves on click away
+                </p>
+              </div>
             </section>
           )}
 
@@ -209,43 +256,59 @@ export default function DayModal({
               </div>
             ) : (
               <div className="space-y-2">
-                {sorted.map(entry => (
-                  <div
-                    key={entry.user_id}
-                    className={[
-                      'rounded-xl px-4 py-3 border transition-colors',
-                      entry.user_id === userId
-                        ? 'bg-[#172B1E] border-[#2D9D4B]/30'
-                        : 'bg-[#191B1C] border-[#2A2C2D]',
-                    ].join(' ')}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#3BC45F] flex-shrink-0" />
-                      <span className={[
-                        'text-sm font-medium',
+                {sorted.map(entry => {
+                  const hasTime = entry.time_start && entry.time_end
+                  return (
+                    <div
+                      key={entry.user_id}
+                      className={[
+                        'rounded-xl px-4 py-3 border',
                         entry.user_id === userId
-                          ? 'text-[#3BC45F]'
-                          : 'text-[#EDEFF0]',
-                      ].join(' ')}>
-                        {entry.username}
-                      </span>
-                      {entry.user_id === userId && (
-                        <span className="text-[#595F61] text-xs">(you)</span>
-                      )}
-                    </div>
+                          ? 'bg-[#172B1E] border-[#2D9D4B]/30'
+                          : 'bg-[#191B1C] border-[#2A2C2D]',
+                      ].join(' ')}
+                    >
+                      {/* Name */}
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#3BC45F] flex-shrink-0" />
+                        <span className={[
+                          'text-sm font-medium',
+                          entry.user_id === userId ? 'text-[#3BC45F]' : 'text-[#EDEFF0]',
+                        ].join(' ')}>
+                          {entry.username}
+                        </span>
+                        {entry.user_id === userId && (
+                          <span className="text-[#595F61] text-xs">(you)</span>
+                        )}
+                      </div>
 
-                    {entry.games ? (
-                      <p className="text-[#9BA3A8] text-xs mt-1.5 pl-4 leading-relaxed">
-                        <span className="text-[#595F61] mr-1">🎲</span>
-                        {entry.games}
-                      </p>
-                    ) : (
-                      <p className="text-[#383B3D] text-[11px] mt-1 pl-4 italic">
-                        No games listed
-                      </p>
-                    )}
-                  </div>
-                ))}
+                      {/* Time range */}
+                      {hasTime && (
+                        <p className="text-[#9BA3A8] text-xs mt-1.5 pl-4 flex items-center gap-1.5">
+                          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"
+                               className="text-[#595F61] flex-shrink-0">
+                            <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
+                            <path d="M6 3.5V6L7.5 7.5" stroke="currentColor"
+                                  strokeWidth="1.2" strokeLinecap="round"/>
+                          </svg>
+                          {fmt12(entry.time_start)} – {fmt12(entry.time_end)}
+                        </p>
+                      )}
+
+                      {/* Games */}
+                      {entry.games ? (
+                        <p className="text-[#9BA3A8] text-xs mt-1 pl-4 leading-relaxed">
+                          <span className="text-[#595F61] mr-1">🎲</span>
+                          {entry.games}
+                        </p>
+                      ) : !hasTime ? (
+                        <p className="text-[#383B3D] text-[11px] mt-1 pl-4 italic">
+                          No details added
+                        </p>
+                      ) : null}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </section>
