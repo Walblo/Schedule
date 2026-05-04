@@ -76,4 +76,13 @@
     border-bottom: 1px solid #2A2C2D;
   }
   .cal-cell-border:nth-child(7n) { border-right: none; }
+
+  /* ── Day modal animation ── */
+  .modal-card {
+    animation: modal-in 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(0.96) translateY(-6px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0); }
+  }
 }

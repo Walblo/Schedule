@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS availability (
   user_id    UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   username   TEXT NOT NULL,
   date       DATE NOT NULL,
+  games      TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (user_id, date)
 );
@@ -31,7 +32,12 @@ ALTER TABLE availability ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "availability_select_all"  ON availability FOR SELECT  USING (true);
 CREATE POLICY "availability_insert_own"  ON availability FOR INSERT  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "availability_update_own"  ON availability FOR UPDATE  USING (auth.uid() = user_id);
 CREATE POLICY "availability_delete_own"  ON availability FOR DELETE  USING (auth.uid() = user_id);
+
+-- ── If you already ran the schema above, run just this migration instead ──
+-- ALTER TABLE availability ADD COLUMN IF NOT EXISTS games TEXT DEFAULT '';
+-- CREATE POLICY "availability_update_own" ON availability FOR UPDATE USING (auth.uid() = user_id);
 
 -- Enable real-time for availability
 ALTER PUBLICATION supabase_realtime ADD TABLE availability;

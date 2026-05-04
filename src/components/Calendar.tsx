@@ -7,12 +7,7 @@ import {
 } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 import DayCell from './DayCell'
-
-interface AvailEntry {
-  user_id:  string
-  username: string
-  date:     string
-}
+import DayModal, { type AvailEntry } from './DayModal'
 
 interface CalendarProps {
   userId:   string
@@ -40,16 +35,15 @@ function ChevronRight() {
 }
 
 export default function Calendar({ userId, username }: CalendarProps) {
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [availability, setAvailability] = useState<AvailEntry[]>([])
-  const [fetching,  setFetching]  = useState(true)
-  const [toggling,  setToggling]  = useState<string | null>(null)
+  const [currentDate,   setCurrentDate]   = useState(new Date())
+  const [availability,  setAvailability]  = useState<AvailEntry[]>([])
+  const [fetching,      setFetching]      = useState(true)
+  const [selectedDate,  setSelectedDate]  = useState<Date | null>(null)
 
-  // Derived calendar grid
-  const monthStart  = startOfMonth(currentDate)
-  const monthEnd    = endOfMonth(currentDate)
-  const calStart    = startOfWeek(monthStart, { weekStartsOn: 0 })
-  const calEnd      = endOfWeek(monthEnd,    { weekStartsOn: 0 })
+  const monthStart   = startOfMonth(currentDate)
+  const monthEnd     = endOfMonth(currentDate)
+  const calStart     = startOfWeek(monthStart, { weekStartsOn: 0 })
+  const calEnd       = endOfWeek(monthEnd,     { weekStartsOn: 0 })
   const calendarDays = eachDayOfInterval({ start: calStart, end: calEnd })
 
   const fetchAvailability = useCallback(async () => {
@@ -57,7 +51,7 @@ export default function Calendar({ userId, username }: CalendarProps) {
     const end   = format(endOfMonth(currentDate),   'yyyy-MM-dd')
     const { data, error } = await supabase
       .from('availability')
-      .select('user_id, username, date')
+      .select('user_id, username, date, games')
       .gte('date', start)
       .lte('date', end)
     if (!error && data) setAvailability(data as AvailEntry[])
@@ -79,38 +73,22 @@ export default function Calendar({ userId, username }: CalendarProps) {
     return () => { supabase.removeChannel(channel) }
   }, [fetchAvailability])
 
-  const toggleAvailability = async (date: Date) => {
-    if (!isSameMonth(date, currentDate) || toggling) return
-    const dateStr = format(date, 'yyyy-MM-dd')
-    setToggling(dateStr)
+  // Returns all entries for a given date
+  const entriesForDate = (date: Date): AvailEntry[] =>
+    availability.filter(a => a.date === format(date, 'yyyy-MM-dd'))
 
-    const alreadyIn = availability.some(a => a.user_id === userId && a.date === dateStr)
-    if (alreadyIn) {
-      await supabase.from('availability').delete()
-        .eq('user_id', userId).eq('date', dateStr)
-    } else {
-      await supabase.from('availability').insert({ user_id: userId, username, date: dateStr })
-    }
-
-    await fetchAvailability()
-    setToggling(null)
-  }
-
-  const usersForDate = (date: Date) =>
-    availability.filter(a => a.date === format(date, 'yyyy-MM-dd')).map(a => a.username)
-
-  // Stats: top game nights (days with most players)
+  // Stats
   const dateCounts: Record<string, number> = {}
   availability.forEach(a => { dateCounts[a.date] = (dateCounts[a.date] ?? 0) + 1 })
   const topDays = Object.entries(dateCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
 
-  const myCount = availability.filter(a => a.user_id === userId).length
+  const myCount      = availability.filter(a => a.user_id === userId).length
   const uniquePlayers = new Set(availability.map(a => a.username)).size
 
   return (
-    <div>
+    <>
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
         <div>
@@ -118,7 +96,7 @@ export default function Calendar({ userId, username }: CalendarProps) {
             {format(currentDate, 'MMMM yyyy')}
           </h2>
           <p className="text-[#595F61] text-sm mt-1.5">
-            Click any day to toggle your availability
+            Click any day to see details and toggle your availability
           </p>
         </div>
 
@@ -163,7 +141,6 @@ export default function Calendar({ userId, username }: CalendarProps) {
           ))}
         </div>
 
-        {/* Days */}
         {fetching ? (
           <div className="flex items-center justify-center h-64 text-[#595F61]">
             <div className="flex items-center gap-3 animate-pulse">
@@ -174,25 +151,28 @@ export default function Calendar({ userId, username }: CalendarProps) {
           </div>
         ) : (
           <div className="grid grid-cols-7">
-            {calendarDays.map((day, idx) => (
-              <DayCell
-                key={idx}
-                date={day}
-                isCurrentMonth={isSameMonth(day, currentDate)}
-                availableUsers={usersForDate(day)}
-                currentUsername={username}
-                isToday={isToday(day)}
-                isToggling={toggling === format(day, 'yyyy-MM-dd')}
-                onToggle={() => toggleAvailability(day)}
-              />
-            ))}
+            {calendarDays.map((day, idx) => {
+              const dayEntries = entriesForDate(day)
+              return (
+                <DayCell
+                  key={idx}
+                  date={day}
+                  isCurrentMonth={isSameMonth(day, currentDate)}
+                  entries={dayEntries}
+                  currentUserId={userId}
+                  isToday={isToday(day)}
+                  onClick={() => {
+                    if (isSameMonth(day, currentDate)) setSelectedDate(day)
+                  }}
+                />
+              )
+            })}
           </div>
         )}
       </div>
 
       {/* ── Stats row ── */}
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* My count */}
         <div className="bg-[#1A1C1D]/70 border border-[#2A2C2D] rounded-xl p-4 backdrop-blur-sm">
           <p className="text-[#595F61] text-xs uppercase tracking-widest mb-1">Your availability</p>
           <p className="text-[#EDEFF0] text-2xl font-bold font-cinzel">
@@ -203,7 +183,6 @@ export default function Calendar({ userId, username }: CalendarProps) {
           </p>
         </div>
 
-        {/* Unique players */}
         <div className="bg-[#1A1C1D]/70 border border-[#2A2C2D] rounded-xl p-4 backdrop-blur-sm">
           <p className="text-[#595F61] text-xs uppercase tracking-widest mb-1">Players active</p>
           <p className="text-[#EDEFF0] text-2xl font-bold font-cinzel">
@@ -214,7 +193,6 @@ export default function Calendar({ userId, username }: CalendarProps) {
           </p>
         </div>
 
-        {/* Best game nights */}
         <div className="bg-[#1A1C1D]/70 border border-[#2A2C2D] rounded-xl p-4 backdrop-blur-sm">
           <p className="text-[#595F61] text-xs uppercase tracking-widest mb-2">Best game nights</p>
           {topDays.length === 0 ? (
@@ -242,26 +220,37 @@ export default function Calendar({ userId, username }: CalendarProps) {
       {/* ── Legend ── */}
       <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-[#595F61]">
         <div className="flex items-center gap-1.5">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#3BC45F] text-[#05250D] text-[10px] font-bold">
-            You
-          </span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#3BC45F]
+                           text-[#05250D] text-[10px] font-bold">You</span>
           <span>You&apos;re available</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#1A3020]
-                           text-[#4AF076] border border-[#2D9D4B]/35 text-[10px]">
-            friend
-          </span>
+                           text-[#4AF076] border border-[#2D9D4B]/35 text-[10px]">friend</span>
           <span>Another player is free</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex items-center justify-center w-5 h-5 rounded-full
-                           bg-[#C45F3B] text-white text-[10px] font-bold">
-            7
-          </span>
+                           bg-[#C45F3B] text-white text-[10px] font-bold">7</span>
           <span>Today</span>
         </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px]">🎲</span>
+          <span>Games listed — click day to see</span>
+        </div>
       </div>
-    </div>
+
+      {/* ── Day detail modal ── */}
+      {selectedDate && (
+        <DayModal
+          date={selectedDate}
+          entries={entriesForDate(selectedDate)}
+          userId={userId}
+          username={username}
+          onClose={() => setSelectedDate(null)}
+          onDataChange={fetchAvailability}
+        />
+      )}
+    </>
   )
 }
